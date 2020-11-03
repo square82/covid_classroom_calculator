@@ -1,13 +1,15 @@
 import math
 import random
 import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.ticker import AutoMinorLocator
 
-parameters = {"breathing_rate":0.66,"duration_of_event":0.8,"fraction_people_with_masks":1,"inhalation_mask_efficiency":0.3,"width":9,"length":6,"height":3,"ventilations_per_hour":1,"decay_rate_of_virus":0.62,"deposition_to_surfaces":0.3,"additional_control_measures":0,"exhalation_mask_efficiency":0.5,"quanta_exhalation_rate":135,"accumulated_incidence":350,"population":200000}
+parameters = {"breathing_rate":0.66,"duration_of_event":0.8,"fraction_people_with_masks":1,"inhalation_mask_efficiency":0.3,"width":9,"length":6,"height":3,"ventilations_per_hour":1,"decay_rate_of_virus":0.62,"deposition_to_surfaces":0.3,"additional_control_measures":0,"exhalation_mask_efficiency":0.5,"quanta_exhalation_rate":135,"accumulated_incidence":386,"population":210000,"asymptomatic_ratio":0.5}
 
 def initialize_params(params):
     total_first_order_loss_rate = params["ventilations_per_hour"] + params["decay_rate_of_virus"] + params["deposition_to_surfaces"] + params["additional_control_measures"]
     volume = params["width"] * params["length"] * params["height"]
-    return total_first_order_loss_rate,volume,params["quanta_exhalation_rate"],params["exhalation_mask_efficiency"],params["fraction_people_with_masks"],params["duration_of_event"],params["breathing_rate"],params["inhalation_mask_efficiency"],params["accumulated_incidence"],params["population"]
+    return total_first_order_loss_rate,volume,params["quanta_exhalation_rate"],params["exhalation_mask_efficiency"],params["fraction_people_with_masks"],params["duration_of_event"],params["breathing_rate"],params["inhalation_mask_efficiency"],params["accumulated_incidence"],params["population"],params["asymptomatic_ratio"]
 
 def calculate_infection_rate (susceptible_people,infective_people):
     global total_first_order_loss_rate,volume,quanta_exhalation_rate,exhalation_mask_efficiency,fraction_people_with_masks,duration_of_event,breathing_rate,inhalation_mask_efficiency
@@ -69,19 +71,30 @@ def simulate_conditional(num_infectious,iterations,min_iterations):
 
 def simulate_absolute(iterations,min_iterations):
     days_simulated = []
+    starting_day_simulated = []
     moving_average = 0
-    average = likelihood_evolution_absolute()
-    sum_days = average
+    moving_average_starting = 0
+    average_days,average_starting_days = likelihood_evolution_absolute()
+    sum_days = average_days
+    sum_starting_days = average_starting_days
     for i in range(2,iterations-2):
-        sum_days += likelihood_evolution_absolute()
+        prev_sum_days,prev_sum_starting_days = likelihood_evolution_absolute()
+        days_simulated.append(prev_sum_days)
+        starting_day_simulated.append(prev_sum_starting_days)
+        sum_days += prev_sum_days
+        sum_starting_days += prev_sum_starting_days
+        moving_average_starting = sum_starting_days/(i*1.0)
         moving_average = sum_days/(i*1.0)
-        if (1-(min(moving_average,average)/max(moving_average,average))<0.000001):
+        if (1-(min(moving_average_starting,average_starting_days)/max(moving_average_starting,average_starting_days))<0.000001):
             if (i>min_iterations):
-                print("AVERAGE CONVERGING TO "+str(moving_average)+ " IN "+str(i)+" ITERATIONS")
                 break
-        average = moving_average
-    #arithmetic_mean = sum(days_simulated)*1.0/len(days_simulated)
-    print("DAYS ABSOLUTE: "+str(average))
+        if (1-(min(moving_average,average_days)/max(moving_average,average_days))<0.000001):
+            if (i>min_iterations):
+                break
+        average_starting_days = moving_average_starting
+        average_days = moving_average
+
+    return np.histogram(days_simulated),np.histogram(starting_day_simulated)
 
 def likelihood_evolution(infective_people):
     days = 1
@@ -111,9 +124,10 @@ def likelihood_evolution_absolute():
     first_infected = False
     while (susceptible_people > 0) :
         if (first_infected == False):
-            first_infected = random.random()<(0.00001*accumulated_incidence)
+            first_infected = random.random()<((accumulated_incidence*population*0.00001*0.00001)/(1-asymptomatic_ratio))
+            if (first_infected):
+                starting_day = days
         if (first_infected == True):
-            starting_day = days
             if ((days - starting_day) > 14):
                 susceptible_people -= infected[(days - starting_day) - 15] - new_infected[(days - starting_day) - 15]
             new_daily_infected,infection_likelihood = calculate_newly_infected(susceptible_people,infective_people)
@@ -123,18 +137,10 @@ def likelihood_evolution_absolute():
             infective_people = infective_people + new_daily_infected
         days += 1
         #print("Day {} - Infected : {} - Susceptible people : {} - Likelihood : {}".format(days - 1,infected[days - 1],susceptible_people,infection_likelihood))
-    return days
+    #print("RETURNING SHIT "+str(days)+" STARTING AT "+str(starting_day))
+    return days,starting_day
 
-total_first_order_loss_rate,volume,quanta_exhalation_rate,exhalation_mask_efficiency,fraction_people_with_masks,duration_of_event,breathing_rate,inhalation_mask_efficiency,accumulated_incidence,population = initialize_params(parameters)
-#conditional_likelihood_evolution()
-#print("===============================================================================================")
-#likelihood_evolution()
+total_first_order_loss_rate,volume,quanta_exhalation_rate,exhalation_mask_efficiency,fraction_people_with_masks,duration_of_event,breathing_rate,inhalation_mask_efficiency,accumulated_incidence,population,asymptomatic_ratio = initialize_params(parameters)
+
 simulate_conditional(1,1000000,10000)
 simulate_absolute(1000000,10000)
-#plt.plot(range(days),infected,'b',label='Infected')
-#plt.plot(range(days),infection_rate,'r',label='Infection rate')
-#plt.legend(loc='upper left')
-#plt.xlabel('Days')
-#plt.ylabel('Rate')
-#plt.grid(True)
-#plt.show()
